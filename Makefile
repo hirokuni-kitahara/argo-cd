@@ -287,6 +287,7 @@ image: build-ui
 	ln -sfn ${DIST_DIR}/argocd ${DIST_DIR}/argocd-cmp-server
 	ln -sfn ${DIST_DIR}/argocd ${DIST_DIR}/argocd-dex
 	cp Dockerfile.dev dist
+	cp pubring.gpg dist
 	docker build -t $(IMAGE_PREFIX)argocd:$(IMAGE_TAG) -f dist/Dockerfile.dev dist
 else
 image:

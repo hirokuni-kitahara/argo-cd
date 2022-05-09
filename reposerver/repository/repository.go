@@ -36,6 +36,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	interlaceprov "github.com/IBM/argocd-interlace/pkg/provenance/kustomize"
+	interlaceutils "github.com/IBM/argocd-interlace/pkg/utils"
 	pluginclient "github.com/argoproj/argo-cd/v2/cmpserver/apiclient"
 	"github.com/argoproj/argo-cd/v2/common"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -232,6 +234,8 @@ type operationContext struct {
 
 	// output of 'git verify-(tag/commit)', if signature verification is enabled (otherwise "")
 	verificationResult string
+
+	repoVerificationResult string
 }
 
 // The 'operation' function parameter of 'runRepoOperation' may call this function to retrieve
@@ -250,6 +254,7 @@ func (s *Service) runRepoOperation(
 	repo *v1alpha1.Repository,
 	source *v1alpha1.ApplicationSource,
 	verifyCommit bool,
+	verifyRepoContent bool,
 	cacheFn func(cacheKey string, firstInvocation bool) (bool, error),
 	operation func(repoRoot, commitSHA, cacheKey string, ctxSrc operationContextSrc) error,
 	settings operationSettings) error {
@@ -309,7 +314,7 @@ func (s *Service) runRepoOperation(
 		}
 		defer io.Close(closer)
 		return operation(chartPath, revision, revision, func() (*operationContext, error) {
-			return &operationContext{chartPath, ""}, nil
+			return &operationContext{chartPath, "", ""}, nil
 		})
 	} else {
 		closer, err := s.repoLock.Lock(gitClient.Root(), revision, settings.allowConcurrent, func() (goio.Closer, error) {
@@ -343,11 +348,23 @@ func (s *Service) runRepoOperation(
 					return nil, err
 				}
 			}
+			var repoVerifyResultStr string
+			if verifyRepoContent {
+				appPath, err := s.gitRepoPaths.GetPath(git.NormalizeGitURL(repo.Repo))
+				if err != nil {
+					return nil, err
+				}
+				repoVerifyResult, err := interlaceprov.VerifySourceMaterial(appPath, repo.Repo, revision)
+				if err != nil {
+					return nil, err
+				}
+				repoVerifyResultStr = fmt.Sprintf("%s; %s", repoVerifyResult.Result, repoVerifyResult.Message)
+			}
 			appPath, err := argopath.Path(gitClient.Root(), source.Path)
 			if err != nil {
 				return nil, err
 			}
-			return &operationContext{appPath, signature}, nil
+			return &operationContext{appPath, signature, repoVerifyResultStr}, nil
 		})
 	}
 }
@@ -369,8 +386,10 @@ func (s *Service) GenerateManifest(ctx context.Context, q *apiclient.ManifestReq
 
 	settings := operationSettings{sem: s.parallelismLimitSemaphore, noCache: q.NoCache, noRevisionCache: q.NoRevisionCache, allowConcurrent: q.ApplicationSource.AllowsConcurrentProcessing()}
 
-	err = s.runRepoOperation(ctx, q.Revision, q.Repo, q.ApplicationSource, q.VerifySignature, cacheFn, operation, settings)
+	// TODO: use q.VerifyRepoContent
+	verifyRepoContent := interlaceutils.SourceRepoVerificationEnabled()
 
+	err = s.runRepoOperation(ctx, q.Revision, q.Repo, q.ApplicationSource, q.VerifySignature, verifyRepoContent, cacheFn, operation, settings)
 	return res, err
 }
 
@@ -427,6 +446,7 @@ func (s *Service) runManifestGen(ctx context.Context, repoRoot, commitSHA, cache
 	}
 	manifestGenResult.Revision = commitSHA
 	manifestGenResult.VerifyResult = opContext.verificationResult
+	manifestGenResult.RepoContentVerifyResult = opContext.repoVerificationResult
 	err = s.cache.SetManifests(cacheKey, q.ApplicationSource, q, q.Namespace, q.TrackingMethod, q.AppLabelKey, q.AppName, &manifestGenCacheEntry)
 	if err != nil {
 		log.Warnf("manifest cache set error %s/%s: %v", q.ApplicationSource.String(), cacheKey, err)
@@ -1332,7 +1352,7 @@ func (s *Service) GetAppDetails(ctx context.Context, q *apiclient.RepoServerAppD
 	}
 
 	settings := operationSettings{allowConcurrent: q.Source.AllowsConcurrentProcessing(), noCache: q.NoCache, noRevisionCache: q.NoCache || q.NoRevisionCache}
-	err := s.runRepoOperation(ctx, q.Source.TargetRevision, q.Repo, q.Source, false, cacheFn, operation, settings)
+	err := s.runRepoOperation(ctx, q.Source.TargetRevision, q.Repo, q.Source, false, false, cacheFn, operation, settings)
 
 	return res, err
 }
@@ -1573,7 +1593,20 @@ func (s *Service) GetRevisionMetadata(ctx context.Context, q *apiclient.RepoServ
 		}
 	}
 
-	metadata = &v1alpha1.RevisionMetadata{Author: m.Author, Date: metav1.Time{Time: m.Date}, Tags: m.Tags, Message: m.Message, SignatureInfo: signatureInfo}
+	repoVerifyResultStr := ""
+	if interlaceutils.SourceRepoVerificationEnabled() {
+		appPath, err := s.gitRepoPaths.GetPath(git.NormalizeGitURL(q.Repo.Repo))
+		if err != nil {
+			return nil, err
+		}
+		repoVerifyResult, err := interlaceprov.VerifySourceMaterial(appPath, q.Repo.Repo, q.Revision)
+		if err != nil {
+			return nil, err
+		}
+		repoVerifyResultStr = fmt.Sprintf("%s; %s", repoVerifyResult.Result, repoVerifyResult.Message)
+	}
+
+	metadata = &v1alpha1.RevisionMetadata{Author: m.Author, Date: metav1.Time{Time: m.Date}, Tags: m.Tags, Message: m.Message, SignatureInfo: signatureInfo, RepoVerifyResult: repoVerifyResultStr}
 	_ = s.cache.SetRevisionMetadata(q.Repo.Repo, q.Revision, metadata)
 	return metadata, nil
 }

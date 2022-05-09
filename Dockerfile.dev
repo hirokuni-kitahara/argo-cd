@@ -3,6 +3,7 @@
 ####################################################################################################
 FROM argocd-base
 COPY argocd /usr/local/bin/
+COPY pubring.gpg /etc/
 
 USER root
 RUN ln -s /usr/local/bin/argocd /usr/local/bin/argocd-server

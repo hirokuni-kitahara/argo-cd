@@ -862,6 +862,8 @@ type RevisionMetadata struct {
 	Message string `json:"message,omitempty" protobuf:"bytes,4,opt,name=message"`
 	// SignatureInfo contains a hint on the signer if the revision was signed with GPG, and signature verification is enabled.
 	SignatureInfo string `json:"signatureInfo,omitempty" protobuf:"bytes,5,opt,name=signatureInfo"`
+
+	RepoVerifyResult string `json:"repoVerifyResult,omitempty" protobuf:"bytes,6,opt,name=repoVerifyResult"`
 }
 
 // SyncOperationResult represent result of sync operation

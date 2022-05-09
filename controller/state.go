@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/argoproj/gitops-engine/pkg/diff"
@@ -36,6 +37,8 @@ import (
 	"github.com/argoproj/argo-cd/v2/util/io"
 	"github.com/argoproj/argo-cd/v2/util/settings"
 	"github.com/argoproj/argo-cd/v2/util/stats"
+
+	interlaceutils "github.com/IBM/argocd-interlace/pkg/utils"
 )
 
 type resourceInfoProviderStub struct {
@@ -319,6 +322,31 @@ func verifyGnuPGSignature(revision string, project *appv1.AppProject, manifestIn
 	return conditions
 }
 
+func verifySourceMaterialRepoSignature(manifestInfo *apiclient.ManifestResponse) []appv1.ApplicationCondition {
+	now := metav1.Now()
+	conditions := make([]appv1.ApplicationCondition, 0)
+	result := manifestInfo.RepoContentVerifyResult
+	if result == "" {
+		msg := "no verification result in the generated manifest"
+		conditions = append(conditions, v1alpha1.ApplicationCondition{Type: v1alpha1.ApplicationConditionComparisonError, Message: msg, LastTransitionTime: &now})
+	} else {
+		resultStr := strings.Split(result, ";")[0]
+		switch resultStr {
+		case interlaceutils.VerifyResultValid:
+			// do nothing when sig is vaild
+		case interlaceutils.VerifyResultInvalid:
+			conditions = append(conditions, v1alpha1.ApplicationCondition{Type: v1alpha1.ApplicationConditionComparisonError, Message: result, LastTransitionTime: &now})
+		default:
+			conditions = append(conditions, v1alpha1.ApplicationCondition{Type: v1alpha1.ApplicationConditionComparisonError, Message: result, LastTransitionTime: &now})
+		}
+	}
+	return conditions
+}
+
+func interlaceEnabled() bool {
+	return true
+}
+
 // CompareAppState compares application git state to the live app state, using the specified
 // revision and supplied source. If revision or overrides are empty, then compares against
 // revision and overrides in the app spec.
@@ -366,7 +394,7 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 	} else {
 		// Prevent applying local manifests for now when signature verification is enabled
 		// This is also enforced on API level, but as a last resort, we also enforce it here
-		if gpg.IsGPGEnabled() && verifySignature {
+		if gpg.IsGPGEnabled() && verifySignature || interlaceEnabled() {
 			msg := "Cannot use local manifests when signature verification is required"
 			targetObjs = make([]*unstructured.Unstructured, 0)
 			conditions = append(conditions, v1alpha1.ApplicationCondition{Type: v1alpha1.ApplicationConditionComparisonError, Message: msg, LastTransitionTime: &now})
@@ -578,6 +606,12 @@ func (m *appStateManager) CompareAppState(app *v1alpha1.Application, project *ap
 	// and stop processing if we do not agree about the outcome.
 	if gpg.IsGPGEnabled() && verifySignature && manifestInfo != nil {
 		conditions = append(conditions, verifyGnuPGSignature(revision, project, manifestInfo)...)
+	}
+
+	if interlaceEnabled() {
+		if manifestInfo != nil {
+			conditions = append(conditions, verifySourceMaterialRepoSignature(manifestInfo)...)
+		}
 	}
 
 	compRes := comparisonResult{

@@ -67,6 +67,8 @@ message ManifestResponse {
     string sourceType = 6;
     // Raw response of git verify-commit operation (always the empty string for Helm)
     string verifyResult = 7;
+    // Raw response of source material verify operation (always the empty string for Helm)
+    string repoContentVerifyResult = 8;
 }
 
 message ListRefsRequest {
