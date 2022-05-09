@@ -271,7 +271,7 @@ require (
 )
 
 require (
-	github.com/IBM/argocd-interlace v0.0.0-00010101000000-000000000000
+	github.com/argoproj-labs/argocd-interlace v0.0.0-00010101000000-000000000000
 	github.com/undefinedlabs/go-mpatch v1.0.6
 	google.golang.org/genproto v0.0.0-20220505152158-f39f71e6c8f3
 )
@@ -314,4 +314,4 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.1
 )
 
-replace github.com/IBM/argocd-interlace => ../../IBM/argocd-interlace
+replace github.com/argoproj-labs/argocd-interlace => ../../argoproj-labs/argocd-interlace

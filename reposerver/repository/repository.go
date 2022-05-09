@@ -36,8 +36,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	interlaceprov "github.com/IBM/argocd-interlace/pkg/provenance/kustomize"
-	interlaceutils "github.com/IBM/argocd-interlace/pkg/utils"
+	interlaceprov "github.com/argoproj-labs/argocd-interlace/pkg/provenance/kustomize"
+	interlaceutils "github.com/argoproj-labs/argocd-interlace/pkg/utils"
 	pluginclient "github.com/argoproj/argo-cd/v2/cmpserver/apiclient"
 	"github.com/argoproj/argo-cd/v2/common"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"

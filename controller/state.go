@@ -38,7 +38,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/util/settings"
 	"github.com/argoproj/argo-cd/v2/util/stats"
 
-	interlaceutils "github.com/IBM/argocd-interlace/pkg/utils"
+	interlaceutils "github.com/argoproj-labs/argocd-interlace/pkg/utils"
 )
 
 type resourceInfoProviderStub struct {
